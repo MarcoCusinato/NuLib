@@ -3,6 +3,7 @@ program make_table_example
   
   use nulib
   use inputparser
+  use hdf5
 #if NUCLEI_HEMPEL
   use nuclei_hempel
 #endif
@@ -90,6 +91,11 @@ program make_table_example
   integer :: i
   real*8 dxfac,mindx
   logical :: doing_inelastic, doing_epannihil
+  !h5 file variables
+  character(len=200) :: namefile = './data_1D_s15.h5'
+  integer(HID_T) file_id_read,dset_id_read,dspace_id_read
+  integer(HSIZE_T) dims_scalar(1), dims_array(1)
+  integer error, accerr
 
 #ifdef __MPI__  
   !MPI variables
@@ -131,13 +137,25 @@ program make_table_example
   
   adhoc_nux_factor = 0.0d0 !increase for adhoc nux heating (also set
                            !add_nux_absorption_on_n_and_p to true)
+  !h5 file parameters
+  accerr=0
+  dims_scalar(1) = 1
+  !open h5
+  call h5open_f(error)
+
+  call h5fopen_f (trim(adjustl(namefile)), H5F_ACC_RDONLY_F, file_id_read, error)
+
   !set up table
-  final_table_size_ye = 51
-  final_table_size_rho = 82
-  final_table_size_temp = 65
+  call h5dopen_f(file_id_read, "number", dset_id_read, error)
+  call h5dread_f(dset_id_read, H5T_NATIVE_INTEGER, final_table_size_ye, dims_scalar, error)
+  call h5dclose_f(dset_id_read,error)
+  dims_array(1) = final_table_size_ye
+
+  final_table_size_rho = final_table_size_ye
+  final_table_size_temp = final_table_size_ye
   
-  final_Itable_size_temp = 65
-  final_Itable_size_eta = 61
+  final_Itable_size_temp = final_table_size_ye
+  final_Itable_size_eta = final_table_size_ye
   final_Itable_size_inE = mytable_number_groups
 
   min_ye = 0.035d0
@@ -231,20 +249,19 @@ program make_table_example
 #endif
   
   table_emission = 0.0d0
+  !read data from h5
+  call h5dopen_f(file_id_read, "Ye", dset_id_read, error)
+  call h5dread_f(dset_id_read, H5T_NATIVE_DOUBLE, table_ye, dims_array, error)
+  call h5dclose_f(dset_id_read,error)
 
-  do iye=1,final_table_size_ye
-     table_ye(iye) = min_ye+dble(iye-1)/dble(final_table_size_ye-1)*(max_ye-min_ye)
-  enddo
+  call h5dopen_f(file_id_read, "rho", dset_id_read, error)
+  call h5dread_f(dset_id_read, H5T_NATIVE_DOUBLE, table_rho, dims_array, error)
+  call h5dclose_f(dset_id_read,error)
 
-  do irho=1,final_table_size_rho
-     table_rho(irho) =  &
-          10.0d0**(min_logrho+dble(irho-1)/dble(final_table_size_rho-1)*(max_logrho-min_logrho))
-  enddo
+  call h5dopen_f(file_id_read, "Temperature", dset_id_read, error)
+  call h5dread_f(dset_id_read, H5T_NATIVE_DOUBLE, table_temp, dims_array, error)
+  call h5dclose_f(dset_id_read,error)
 
-  do itemp=1,final_table_size_temp
-     table_temp(itemp) = &
-          10.0d0**(min_logtemp+dble(itemp-1)/dble(final_table_size_temp-1)*(max_logtemp-min_logtemp))
-  enddo
 
 #ifdef __MPI__
   !mpi_scatterv sends portions of table_rho to different nodes
@@ -493,15 +510,15 @@ program make_table_example
           final_Itable_size_inE,number_output_species,mytable_number_groups))
 #endif
 
+     !read h5 data
+     call h5dopen_f(file_id_read, "Temperature", dset_id_read, error)
+     call h5dread_f(dset_id_read, H5T_NATIVE_DOUBLE, Itable_temp, dims_array, error)
+     call h5dclose_f(dset_id_read,error)
+     
+     call h5dopen_f(file_id_read, "eta", dset_id_read, error)
+     call h5dread_f(dset_id_read, H5T_NATIVE_DOUBLE, Itable_eta, dims_array, error)
+     call h5dclose_f(dset_id_read,error)
 
-     do itemp=1,final_Itable_size_temp
-        Itable_temp(itemp) = &
-             10.0d0**(Imin_logtemp+dble(itemp-1)/dble(final_Itable_size_temp-1)*(Imax_logtemp-Imin_logtemp))
-     enddo
-     do ieta=1,final_Itable_size_eta
-        Itable_eta(ieta) = &
-             10.0d0**(Imin_logeta+dble(ieta-1)/dble(final_Itable_size_eta-1)*(Imax_logeta-Imin_logeta))
-     enddo
 
 #ifdef __MPI__
      !mpi_scatterv sends portions of Itable_temp to different nodes
